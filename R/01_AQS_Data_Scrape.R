@@ -7,6 +7,10 @@
 #' https://aqs.epa.gov/api
 #' Username: sheena.martenies@colostate.edu
 #' Password: khakifrog54
+#' 
+#' NOTE: This can sometimes take a while, depending on the number of monitors,
+#' pollutants, and years. I often just let this run after work and come back 
+#' to it in the morning
 #' ----------------------------------------------------------------------------
 
 #' ----------------------------------------------------------------------------
