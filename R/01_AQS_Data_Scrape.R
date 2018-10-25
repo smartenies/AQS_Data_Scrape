@@ -50,17 +50,15 @@ all_counties <-c("001", "003", "005", "007", "009", "011", "013", "014", "015",
                  "125") 
 
 #all_counties <- str_pad(as.character(1:125), width = 3, pad = "0")
-#all_counties <- "031"
 
 #' https://aqs.epa.gov/aqsweb/codes/data/ParametersByDesc.csv
 #' Criteria pollutants and carbon parameters
-
 params <- c("14129", "42101", "42401", "42602", "44201", "88101", 
             "16111", "88317", "88321")
 
 output <- data.frame()
 
-#' might not work the first time. if not just try typing in the link first yourself
+#' May have to confirm that the aqs_link (below) works
 for(county in all_counties) {
   print(paste("County:", county))
   for(param in params) {
