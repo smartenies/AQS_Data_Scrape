@@ -73,7 +73,11 @@ krige_pts <- st_read(here::here("Data", pts_name),
                      crs = albers) %>% 
   st_centroid() %>% 
   select(-WKT) %>% 
-  mutate_if(is.character, as.numeric)
+  mutate_if(is.character, as.numeric) 
+  
+#' #' just use 5% of points for testing out the script
+#' krige_pts <- sample_frac(krige_pts, 0.05)
+
 head(krige_pts)
 plot(st_geometry(krige_pts), pch = ".")
 
@@ -163,7 +167,7 @@ for (i in 1:length(pols)) {
     
     #' Format kriged data
     #' if data weren't normal, back-transform to original units
-    #' need to apply a correction (See Oliver and Webster 2007)
+    #' need to apply a correction (See Oliver and Webster 2007, PAGE 185)
     #' https://books.google.com/books?hl=en&lr=&id=WBwSyvIvNY8C&oi=fnd&pg=PR5&ots=CCLmSNqK1c&sig=lFZanxv2eVSKec6nPdESzuIFrA4#v=onepage&q&f=false
     #' A back-transformed variance estimate for OK cannot be calculated because
     #' the mean is not known (page 185)
