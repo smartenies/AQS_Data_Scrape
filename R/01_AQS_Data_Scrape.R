@@ -24,6 +24,7 @@ library(Hmisc)
 library(stringr)
 library(readr)
 library(dplyr)
+library(sf)
 
 #' User info for AQS website:
 user_name <- "sheena.martenies@colostate.edu"
@@ -74,9 +75,9 @@ for(county in all_counties) {
       
       prefix <- paste0("https://aqs.epa.gov/api/rawData?user=",
                        user_name, "&pw=", pw, "&format=DMCSV&param=")
-      aqs_link <- paste(prefix,param,
-                        "&bdate=",bdate,"&edate=",edate,"&state=",state,
-                        "&county=",county,collapse = "",sep="")
+      aqs_link <- paste0(prefix,param,
+                         "&bdate=",bdate,"&edate=",edate,"&state=",state,
+                         "&county=",county,collapse = "")
       error_catch <- F; warn_catch <- F
       tryCatch(read.csv(aqs_link),error = function(e) error_catch <- T, 
                warning = function(w) warn_catch <- T)
@@ -88,7 +89,7 @@ for(county in all_counties) {
         
         if(nrow(aqs_data) > 0) {
           if(nrow(output) > 0) {
-            output <- rbind(output,aqs_data)
+            output <- bind_rows(output,aqs_data)
           }
           else {
             output <- aqs_data
@@ -115,8 +116,8 @@ glimpse(output)
 
 write_csv(output, here::here("Data", aqs_file_name))
 
-#' Create and sf object for the monitor locations
-library(sf)
+#' Create an sf object for the monitor locations
+
 ll_wgs84 <- "+proj=longlat +datum=WGS84 +no_defs +ellps=WGS84 +towgs84=0,0,0"
 
 monitors <- select(output, County.Code, Site.Num, Parameter.Code,

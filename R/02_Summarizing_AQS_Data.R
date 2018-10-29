@@ -18,7 +18,7 @@ ll_wgs84 <- "+proj=longlat +datum=WGS84 +no_defs +ellps=WGS84 +towgs84=0,0,0"
 #' -----------------------------------------------------------------------------
 
 #' For which years and which state do we want data?
-years <- c(2010:2011)
+years <- c(2010:2010)
 state <- "08" #Colorado
 time_zone <- "America/Denver"
 
@@ -40,22 +40,30 @@ aqs_o3_summ_name <- paste0("AQS_Ozone_MDA8_Summary_", state, "_",
 
 
 #' Read in the daily/hourly data
-mon_data <- read_csv(here::here("Data", aqs_file_name)) 
+mon_data <- read_csv(here::here("Data", aqs_file_name)) %>% 
+  #' if ozone, convert to ppb
+  mutate(Sample.Measurement = ifelse(Parameter.Code == 44201, 
+                                     Sample.Measurement * 1000,
+                                     Sample.Measurement),
+         Units.of.Measure = ifelse(Parameter.Code == 44201,
+                                   "Parts per billion",
+                                   Units.of.Measure)) 
 
 #' Daily means for each pollutant
 daily_means <- mon_data %>% 
   filter(Parameter.Code %in% pol) %>% 
+  
+  #' summarize by monitor, pollutant, and day
   group_by(Parameter.Code, monitor_id, POC, Date.Local, Units.of.Measure) %>% 
   summarize(mean = mean(Sample.Measurement, na.rm=T))
   
 write_csv(daily_means, here::here("Data", aqs_summ_name))
 
-
 #' -----------------------------------------------------------------------------
 #' Calcuating the daily 8-hour max concentration for ozone
 #' 
 #' Note: I'm sure there's probably a more efficient, less ugly way to do this,
-#' and maybe one day I'll get there... 
+#' and maybe one day I'll get there... maybe the purrr package? would need lists
 #' -----------------------------------------------------------------------------
 
 #' Subset to O3, add an identifier for hour, day, week, month, and year
@@ -117,7 +125,7 @@ for (i in 1:length(monitor_list)) {
       temp <- data.frame(monitor_id = unique(o3$monitor_id)[i],
                          POC = unique(df1$POC)[m],
                          mdy = days[1], 
-                         d8hmax = max)
+                         mean = max)
       temp_df <- rbind(temp_df, temp)
       rm(temp, df2) 
     }
@@ -127,7 +135,7 @@ for (i in 1:length(monitor_list)) {
 
 temp_df <- mutate_if(temp_df, is.factor, as.character)
 o3_MDA8 <- left_join(o3, temp_df, by=c("monitor_id", "mdy", "POC")) %>% 
-  select(Parameter.Code, monitor_id, POC, Date.Local, Units.of.Measure, d8hmax) %>% 
+  select(Parameter.Code, monitor_id, POC, Date.Local, Units.of.Measure, mean) %>% 
   distinct() %>% 
   arrange(monitor_id, POC, Date.Local)
 
