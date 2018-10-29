@@ -133,6 +133,11 @@ for (i in 1:length(pols)) {
     data_norm_test <- shapiro.test(monitors$mean)
     data_norm_test
     
+    #' Some IDW estimates for comparison
+    idw_pwr2 <- idw(mean ~ 1, monitors, krige_pts_sp, idp = 2)
+    idw_pwr2.5 <- idw(mean ~ 1, monitors, krige_pts_sp, idp = 2.5)
+    idw_pwr3 <- idw(mean ~ 1, monitors, krige_pts_sp, idp = 3)
+    
     #' if data are not normally distributed (based on Shapiro Wilk test), 
     #' use log-transformation-- this can sometimes help, but not always
     #' can change this criterion if needed
@@ -180,8 +185,11 @@ for (i in 1:length(pols)) {
     temp <- data.frame(kriged_pt_id = krige_pts_sp@data$grid_id,
                        pollutant = pols[i],
                        date = dates[j],
-                       mean_pred = ok_result$var1.pred,
-                       mean_var = ok_result$var1.var)
+                       mean_pred_idw_pwr2 = idw_pwr2$var1.pred,
+                       mean_pred_idw_pwr2.5 = idw_pwr2.5$var1.pred,
+                       mean_pred_idw_pwr3 = idw_pwr3$var1.pred,
+                       mean_pred_ok = ok_result$var1.pred,
+                       mean_var_ok = ok_result$var1.var)
     krige_data <- bind_rows(krige_data, temp)
 
     #' Data frames of cross-validation and diagnostic results
