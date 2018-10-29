@@ -3,177 +3,126 @@
 #' Author: Sheena Martenies
 #' Contact: Sheena.Martenies@colostate.edu
 #' 
-#' Description: interpolate monitor concentrations to specific points using 
-#' orinary kriging 
-#' ----------------------------------------------------------------------------
+#' Description: This script calculates daily means at each monitor
+#' Also includes code to calculate MDA8 for ozone data
+#' -----------------------------------------------------------------------------
 
 library(sf)
 library(sp)
 library(gstat)
-library(ggplot2)
-library(ggthemes)
+library(automap)
 library(tidyverse)
-library(writexl)
-library(viridis)
 
-#' For ggplots
-simple_theme <- theme(
-  #aspect.ratio = 1,
-  text  = element_text(family="Calibri",size = 12, color = 'black'),
-  panel.spacing.y = unit(0,"cm"),
-  panel.spacing.x = unit(0.25, "lines"),
-  panel.grid.minor = element_line(color = "transparent"),
-  panel.grid.major = element_line(color = "transparent"),
-  panel.border=element_rect(fill = NA),
-  panel.background=element_blank(),
-  axis.ticks = element_line(colour = "black"),
-  axis.text = element_text(color = "black", size=10),
-  # legend.position = c(0.1,0.1),
-  plot.margin=grid::unit(c(0,0,0,0), "mm"),
-  legend.key = element_blank()
-)
-windowsFonts(Calibri=windowsFont("TT Calibri"))
-options(scipen = 9999) #avoid scientific notation
-
-albers <- "+proj=aea +lat_1=29.5 +lat_2=45.5 +lat_0=23 +lon_0=-96 +x_0=0 +y_0=0 +ellps=GRS80 +towgs84=0,0,0,0,0,0,0 +units=m +no_defs"
-ll_nad83 <- "+proj=longlat +datum=NAD83 +no_defs +ellps=GRS80 +towgs84=0,0,0"
 ll_wgs84 <- "+proj=longlat +datum=WGS84 +no_defs +ellps=WGS84 +towgs84=0,0,0"
+albers <- "+proj=aea +lat_1=29.5 +lat_2=45.5 +lat_0=23 +lon_0=-96 +x_0=0 +y_0=0 +ellps=GRS80 +towgs84=0,0,0,0,0,0,0 +units=m +no_defs"
+
+#' -----------------------------------------------------------------------------
+#' Read in pollutant data and summarize to daily means
+#' Source: AQS Data Mart (Script: 01_AQS_Data_Scrape.R)
+#' -----------------------------------------------------------------------------
+
+#' For which years and which state do we want data?
+years <- c(2010:2011)
+state <- "08" #Colorado
+time_zone <- "America/Denver"
+
+#' https://aqs.epa.gov/aqsweb/codes/data/ParametersByDesc.csv
+#' Criteria pollutants and carbon parameters
+
+pol <- c("88101", "44201") # PM2.5 and O3
+aqs_summ_name <- paste0("AQS_Daily_Mean_Summary_", state, "_", 
+                        years[1], "_to_", years[length(years)], ".csv")
+
+aqs_o3_summ_name <- paste0("AQS_Ozone_MDA8_Summary_", state, "_", 
+                           years[1], "_to_", years[length(years)], ".csv")
+
+pts_name <- "Grid_250_m_AEA.csv" #' file with unmeasured locations for kriging
+
+daily <- read_csv(here::here("Data", aqs_summ_name)) %>% 
+  filter(POC == 1) %>% 
+  mutate(monitor_id = as.numeric(monitor_id))
+
+#' POC is the Parameter Operating Code
+#' Here I've filtered to just look at POC == 1, which is the original instrument
+#' used to measure data (higher POCs are colocated instruments)
+#' Info on POCs is in the AQS data dictionary (4.210 Page 309)
+#' https://www.epa.gov/sites/production/files/2017-03/documents/aqs_data_dictionary.pdf
 
 #' -----------------------------------------------------------------------------
 #' Set up objects for kriging
 #' #' Note: gstat (for kriging) requires sp objects (not sf)
 #' -----------------------------------------------------------------------------
 
-#' Census tract centroids for kriging
-load("./Data/Spatial Data/dm_tracts.RData")
-ct_ap <- select(dm_tracts, GEOID) %>%
-  arrange(GEOID) %>%
-  st_centroid
+#' Points for krigings
+#' gstat requires sp objects, not sf objects
 
-ct_air_pollution <- select(dm_tracts, GEOID) %>%
-  arrange(GEOID)
+krige_pts <- st_read(here::here("Data", pts_name),
+                     stringsAsFactors = F, wkt = "WKT",
+                     crs = albers) %>% 
+  st_centroid() %>% 
+  select(-WKT) %>% 
+  mutate_if(is.character, as.numeric)
+head(krige_pts)
 
-#' Converting the census tract centroids from sf to sp 
-ct_sp <- as(ct_ap, "Spatial")
-plot(ct_sp)
+#' Converting from sf to sp 
+krige_pts_sp <- as(krige_pts, "Spatial")
+plot(krige_pts_sp)
 
-#' Monitoring data
-load("./Data/CEI Data/pm_monitor_metrics.RData")
-load("./Data/CEI Data/o3_monitor_metrics.RData")
-load("./Data/CEI Data/monitors.RData")
-
-pm_monitors <- select(pm_monitors, monitor_id) %>%
-  left_join(pm_average, by = "monitor_id") %>%
-  arrange(week_ending) %>%
-  mutate(year = year(week_ending)) %>%
-  mutate(week_ending = as.Date(week_ending)) %>%
-  filter(!(year == 2018)) %>%
-  filter(!(is.na(week_ending)))
-
-o3_monitors <- select(o3_monitors, monitor_id) %>%
-  left_join(o3_average, by = "monitor_id") %>%
-  arrange(week_ending) %>%
-  mutate(year = year(week_ending)) %>%
-  mutate(week_ending = as.Date(week_ending)) %>%
-  filter(!(year == 2018)) %>%
-  filter(!(is.na(week_ending))) %>%
-  #' convert ppm to ppb
-  mutate(weekly_average = weekly_average * 1000)
-
-head(pm_monitors)
-head(o3_monitors)
-
-tail(pm_monitors)
-tail(o3_monitors)
-
-summary(pm_monitors)
-summary(o3_monitors)
-
-hist(pm_monitors$weekly_average)
-hist(o3_monitors$weekly_average)
-
-plot(st_geometry(dm_tracts), border="grey50")
-plot(st_geometry(ct_ap), add=T, col="black")
-plot(st_geometry(pm_monitors), add=T, col="green")
-plot(st_geometry(o3_monitors), add=T, col="blue")
-
-#' write out shapefiles to check distances
-# st_write(dm_tracts[,4], "./Data/Spatial Data/Shapefiles/dm_tracts.shp",
-#          delete_dsn = T)
-# st_write(ct_ap, "./Data/Spatial Data/Shapefiles/dm_tracts_centroids.shp",
-#          delete_dsn = T)
-# st_write(pm_monitors, "./Data/Spatial Data/Shapefiles/pm_monitors.shp",
-#          delete_dsn = T)
-# st_write(o3_monitors, "./Data/Spatial Data/Shapefiles/o3_monitors.shp",
-#          delete_dsn = T)
-
-#' Choosing a kriging cutoff distance:
-#'     - At 30 km we lose some of the eastern census tracts
-#'     - At 40 km we lose the two eastern-most census tracts, but they only 
-#'       have a couple participants
-#'     - Going to go with 40 km for now and see how it looks
-
-#' Check date lists
-#' Not all dates are included, so need a full list for later
-length(unique(pm_monitors$week_ending)) == length(unique(o3_monitors$week_ending))
-
-start <- ceiling_date(as.Date("2009-01-01"), unit="week")  + 7
-ap_dates <- data.frame(week_ending = seq.Date(from = start, 
-                                              to = as.Date("2017-12-31"),
-                                              by="2 weeks"))
-week_list <- sort(unique(ap_dates$week_ending))
+#' Monitor locations
+monitor_pts <- st_read(here::here("Data", aqs_mon_name),
+                       stringsAsFactors = F, wkt = "WKT",
+                       crs = ll_wgs84) %>% 
+  st_transform(crs = albers) %>% 
+  select(-WKT) %>% 
+  mutate_if(is.character, as.numeric)
+head(monitor_pts)
 
 #' -----------------------------------------------------------------------------
-#' Biweekly mean PM2.5
-#' ------------------------------------------------------------------------------
-
-library(gstat)
-library(automap)
+#' Ordinary kriging
 
 show.vgms()
-all_models <- c("Exp", "Sph", "Gau", "Mat", "Ste", "Lin")
+#' List of models to try to fit
+all_models <- c("Exp", "Sph", "Gau", "Cir", "Lin", "Log")
 
 #' cutoff distance is 40 km
 c_dist = 40000
 
-pm_ct_data <- data.frame()
-pm_cv_results <- data.frame()
-pm_diagnostics <- data.frame()
+#' list of dates, pollutants to loop through
+pols <- unique(daily$Parameter.Code)
 
-for (i in 1:length(week_list)) {
-  print(paste("Week", i, "of", length(week_list)))
-  
-  #' use second week ending date to identify concentrations
-  week_start <- week_list[i] - 7
-  week_end <- week_list[i]
-  
-  #' Weekly concentration at monitors
-  #' Drop rows with NA values
-  pm_week <- filter(pm_monitors, week_ending %in% c(week_start, week_end)) %>%
-    filter(!is.na(weekly_average))
-  
-  if(nrow(pm_week) == 0) {next}
-  
-  #' Biweekly average for each monitor
-  pm_week <- pm_week %>%
-    select(-week_ending, -year) %>%
-    group_by(monitor_id) %>%
-    summarize(pollutant = "pm",
-              biweekly_average = mean(weekly_average),
-              week_ending = week_end)
+krige_data <- data.frame()
+cv_data <- data.frame()
+cv_diagnostics <- data.frame()
 
-  #' Converting the monitor points from sf to sp 
-  pm_week <- as(pm_week, "Spatial")
+for (i in 1:length(pols)) {
+  df1 <- filter(daily, Parameter.Code == pols[i])
+  dates <- unique(df1$Date.Local)
+  
+  for (j in 1:length(dates)) {
+    df2 <- filter(df1, Date.Local == dates[j])
+    
+    monitors <- filter(monitor_pts, Parameter.Code == pols[i]) %>% 
+      inner_join(df2, by="monitor_id") %>% 
+      as("Spatial")
+    
+    #' Kriging using gstat
+    #' First, fit the empirical variogram
+    vgm <- variogram(mean ~ 1, monitors, cutoff = c_dist)
+    plot(vgm)
+    
+    #' Second, fit the model
+    vgm_fit <- fit.variogram(vgm, model=vgm(all_models), 
+                             fit.kappa = seq(.3,5,.01))
+    model <- as.character(vgm_fit$model)[nrow(vgm_fit)]
+    #plot(vgm, vgm_fit)
+  }
+}
 
-  #' Kriging using gstat
-  #' First, fit the empirical variogram
-  vgm <- variogram(biweekly_average ~ 1, pm_week, cutoff = c_dist)
-  #plot(vgm)
 
-  #' Second, fit the model
-  vgm_fit <- fit.variogram(vgm, model=vgm(all_models), fit.kappa = seq(.3,5,.01))
-  model <- as.character(vgm_fit$model)[nrow(vgm_fit)]
-  #plot(vgm, vgm_fit)
+
+
+  
+
   
   #' Third, krige
   ok_result <- krige(biweekly_average ~ 1, pm_week, ct_sp, vgm_fit,

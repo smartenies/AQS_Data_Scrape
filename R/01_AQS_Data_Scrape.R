@@ -29,14 +29,16 @@ library(dplyr)
 user_name <- "sheena.martenies@colostate.edu"
 pw <- "khakifrog54"
 
-#' File name for output data
-aqs_file_name <- "AQS_Data.csv"
-mon_file_name <- "AQS_Monitors.csv"
-
-#' For which years do we want data?
-years <- c(2009:2017)
+#' For which years and which state do we want data?
+years <- c(2010:2010)
 state <- "08" #Colorado
 time_zone <- "America/Denver"
+
+#' File name for output data
+aqs_file_name <- paste0("AQS_Data_", state, "_", 
+                        years[1], "_to_", years[length(years)], ".csv")
+mon_file_name <- paste0("AQS_Monitors_", state, "_", 
+                        years[1], "_to_", years[length(years)], ".csv")
 
 #' Denver Metro counties: Adams (001), Arapahoe (005), Boulder (013), Broomfield
 #' (014), Denver (031), Douglas (035), Jefferson (059), Larimer (069), Weld (123) 
@@ -51,11 +53,13 @@ all_counties <-c("001", "003", "005", "007", "009", "011", "013", "014", "015",
 
 #all_counties <- str_pad(as.character(1:125), width = 3, pad = "0")
 
+#' Choose which pollutants to scrape
 #' https://aqs.epa.gov/aqsweb/codes/data/ParametersByDesc.csv
 #' Criteria pollutants and carbon parameters
-params <- c("14129", "42101", "42401", "42602", "44201", "88101", 
-            "16111", "88317", "88321")
 
+# params <- c("14129", "42101", "42401", "42602", "44201", "88101", 
+#             "16111", "88317", "88321")
+params <- c("88101", "44201") #' ozone and PM2.5
 output <- data.frame()
 
 #' May have to confirm that the aqs_link (below) works

@@ -17,14 +17,29 @@ ll_wgs84 <- "+proj=longlat +datum=WGS84 +no_defs +ellps=WGS84 +towgs84=0,0,0"
 #' Source: AQS Data Mart (Script: 01_AQS_Data_Scrape.R)
 #' -----------------------------------------------------------------------------
 
+#' For which years and which state do we want data?
+years <- c(2010:2011)
+state <- "08" #Colorado
+time_zone <- "America/Denver"
+
+#' File name for output data
+aqs_file_name <- paste0("AQS_Data_", state, "_", 
+                        years[1], "_to_", years[length(years)], ".csv")
+mon_file_name <- paste0("AQS_Monitors_", state, "_", 
+                        years[1], "_to_", years[length(years)], ".csv")
+
 #' https://aqs.epa.gov/aqsweb/codes/data/ParametersByDesc.csv
 #' Criteria pollutants and carbon parameters
 
 pol <- c("88101", "44201") # PM2.5 and O3
-aqs_file_name <- "AQS_Data.csv"
-aqs_summ_name <- "AQS_Daily_Mean_Summary.csv"
-aqs_o3_summ_name <- "AQS_Ozone_MDA8_Summary.csv"
+aqs_summ_name <- paste0("AQS_Daily_Mean_Summary_", state, "_", 
+                         years[1], "_to_", years[length(years)], ".csv")
 
+aqs_o3_summ_name <- paste0("AQS_Ozone_MDA8_Summary_", state, "_", 
+                            years[1], "_to_", years[length(years)], ".csv")
+
+
+#' Read in the daily/hourly data
 mon_data <- read_csv(here::here("Data", aqs_file_name)) 
 
 #' Daily means for each pollutant
