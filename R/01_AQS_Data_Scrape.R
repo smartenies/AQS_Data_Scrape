@@ -20,10 +20,11 @@
 library(tidyverse)
 library(readxl)
 
+if(!dir.exists("./Data/Temp")) dir.create("./Data/Temp")
 if(!dir.exists("./Data/AQS_Data")) dir.create("./Data/AQS_Data")
 if(!dir.exists("./Data/Met_Data")) dir.create("./Data/Met_Data")
 
-years <- c(2000:2018)
+years <- c(2010:2014)
 met_vars <- c("WIND", "PRESS", "TEMP", "RH_DP")
 
 for (i in 1:length(years)) {
