@@ -194,7 +194,8 @@ for (i in 1:length(krige_files)) {
     plot(vgm)
     
     #' Second, fit the model
-    vgm_fit <- fit.variogram(vgm, model=vgm(all_models))
+    vgm_fit <- fit.variogram(vgm, model=vgm(all_models),
+                             fit.kappa = seq(.3,5,.01))
     model <- as.character(vgm_fit$model)[nrow(vgm_fit)]
     plot(vgm, vgm_fit)
     
