@@ -135,6 +135,8 @@ for (i in 1:length(krige_files)) {
     daily <- select(daily, monitor_id, Date.Local, Units.of.Measure) %>%
       left_join(ozone, by=c("monitor_id", "Date.Local")) %>% 
       distinct()
+    
+    rm(ozone)
   }
 
   #' ------------------------------------------------------------------
@@ -159,7 +161,7 @@ for (i in 1:length(krige_files)) {
   
   for (j in 1:length(dates)) {
     daily2 <- filter(daily, Date.Local == dates[j])
-    if (nrow(daily2 == 0)) next
+    #if (nrow(daily2 == 0)) next
     
     monitors <- left_join(monitor_pts, daily2, by="monitor_id") %>% 
       as("Spatial")
@@ -192,21 +194,17 @@ for (i in 1:length(krige_files)) {
     plot(vgm)
     
     #' Second, fit the model
-    vgm_fit <- fit.variogram(vgm, model=vgm(all_models), 
-                             fit.kappa = seq(.3,5,.01))
+    vgm_fit <- fit.variogram(vgm, model=vgm(all_models))
     model <- as.character(vgm_fit$model)[nrow(vgm_fit)]
     plot(vgm, vgm_fit)
     
     #' Third, krige
     ok_result <- krige(mean ~ 1, monitors, krige_pts_sp, vgm_fit)
-
-    #' Fourth, leave-one out cross validation
-    cv_result <- krige.cv(mean ~ 1, monitors, vgm_fit)
-    summary(cv_result)
-    hist(cv_result$residual)
-    qqnorm(cv_result$residual);qqline(cv_result$residual, col=2)
-    cv_res_norm_test <- shapiro.test(cv_result$residual)
-    cv_res_norm_test
+    
+    if(data_norm_test$p.value < 0.05) {
+      ok_result$var1.pred <- exp(ok_result$var1.pred + (0.5*ok_result$var1.var))
+      ok_result$var1.var <- NA
+    }
     
     #' Format kriged data
     #' if data weren't normal, back-transform to original units
@@ -214,64 +212,76 @@ for (i in 1:length(krige_files)) {
     #' https://books.google.com/books?hl=en&lr=&id=WBwSyvIvNY8C&oi=fnd&pg=PR5&ots=CCLmSNqK1c&sig=lFZanxv2eVSKec6nPdESzuIFrA4#v=onepage&q&f=false
     #' A back-transformed variance estimate for OK cannot be calculated because
     #' the mean is not known (page 185)
-    
-    if(data_norm_test$p.value < 0.05) {
-      ok_result$var1.pred <- exp(ok_result$var1.pred + (0.5*ok_result$var1.var))
-      ok_result$var1.var <- NA
-    }
-    
-    temp <- data.frame(kriged_pt_id = krige_pts_sp@data$WRFGRID_ID,
+    temp <- data.frame(WRFGRID_ID = krige_pts_sp@data$WRFGRID_ID,
                        pollutant = str_replace(krige_files[i], ".csv", ""),
                        date = dates[j],
-                       mean_pred_idw_pwr2 = idw_pwr2$var1.pred,
-                       mean_pred_idw_pwr2.5 = idw_pwr2.5$var1.pred,
-                       mean_pred_idw_pwr3 = idw_pwr3$var1.pred,
-                       mean_pred_ok = ok_result$var1.pred,
-                       mean_var_ok = ok_result$var1.var)
+                       conc_pred_idw_pwr2 = idw_pwr2$var1.pred,
+                       conc_pred_idw_pwr2.5 = idw_pwr2.5$var1.pred,
+                       conc_pred_idw_pwr3 = idw_pwr3$var1.pred,
+                       conc_pred_ok = ok_result$var1.pred,
+                       conc_var_ok = ok_result$var1.var)
     krige_data <- bind_rows(krige_data, temp)
     
-    #' Data frames of cross-validation and diagnostic results
+    #' Fourth, leave-one out cross validation
+    cv_result <- krige.cv(mean ~ 1, monitors, vgm_fit)
+    summary(cv_result)
     
-    #' See Li and Heap for a nice explanation of diagnostics
-    #' https://pdfs.semanticscholar.org/686c/29a81eab59d7f6b7e2c4b060b1184323a122.pdf
-    #' Mean error (same units as pollutants), measures bias should be small
-    #' RMSE = root mean squared error (same units as pollutant), should be small
-    #' cor_obs_pred = correlation between observed and predicted, should be 1
-    #' cor_pred_res = correlation between predicted and residual, should be 0
-    cv_compare <- compare.cv(list(krige.cv_output = cv_result))
-    cv_result <- as.data.frame(cv_result) %>% 
-      mutate(pollutant = str_replace(krige_files[i], ".csv", ""),
-             date = dates[j])
-    cv_data <- bind_rows(cv_data, cv_result)
-    
-    temp2 <- data.frame(pollutant = str_replace(krige_files[i], ".csv", ""),
-                        date = dates[j],
-                        log_transformed = data_norm_test$p.value < 0.05,
-                        monitor_n = nrow(monitors),
-                        monitor_min = min(monitors$mean, na.rm=T),
-                        monitor_max = max(monitors$mean, na.rm=T),
-                        monitor_mean = mean(monitors$mean, na.rm=T),
-                        model = model,
-                        modeled_min = min(ok_result$var1.pred, na.rm=T),
-                        modeled_max = max(ok_result$var1.pred, na.rm=T),
-                        modeled_mean = mean(ok_result$var1.pred, na.rm=T),
-                        mean_error = unname(unlist(cv_compare[1,1])),
-                        me_mean = unname(unlist(cv_compare[2,1])),
-                        msne = unname(unlist(cv_compare[5,1])),
-                        rmse = unname(unlist(cv_compare[8,1])),
-                        cor_obs_pred = unname(unlist(cv_compare[6,1])),
-                        cor_pred_res = unname(unlist(cv_compare[7,1])),
-                        data_norm_test_p = data_norm_test$p.value,
-                        cv_res_norm_test_p = cv_res_norm_test$p.value)
-    cv_diagnostics <- bind_rows(cv_diagnostics, temp2)
-    
+    if(sum(is.na(cv_result$var1.pred)) == 0) {
+      hist(cv_result$residual)
+      qqnorm(cv_result$residual);qqline(cv_result$residual, col=2)
+      cv_res_norm_test <- shapiro.test(cv_result$residual)
+      cv_res_norm_test
+      
+      #' Data frames of cross-validation and diagnostic results
+      
+      #' See Li and Heap for a nice explanation of diagnostics
+      #' https://pdfs.semanticscholar.org/686c/29a81eab59d7f6b7e2c4b060b1184323a122.pdf
+      #' Mean error (same units as pollutants), measures bias should be small
+      #' RMSE = root mean squared error (same units as pollutant), should be small
+      #' cor_obs_pred = correlation between observed and predicted, should be 1
+      #' cor_pred_res = correlation between predicted and residual, should be 0
+      cv_compare <- compare.cv(list(krige.cv_output = cv_result))
+      cv_result <- as.data.frame(cv_result) %>% 
+        mutate(pollutant = str_replace(krige_files[i], ".csv", ""),
+               date = dates[j])
+      cv_data <- bind_rows(cv_data, cv_result)
+      
+      temp2 <- data.frame(pollutant = str_replace(krige_files[i], ".csv", ""),
+                          date = dates[j],
+                          log_transformed = data_norm_test$p.value < 0.05,
+                          monitor_n = nrow(monitors),
+                          monitor_mean = mean(monitors$mean, na.rm=T),
+                          monitor_min = min(monitors$mean, na.rm=T),
+                          monitor_max = max(monitors$mean, na.rm=T),
+                          model = model,
+                          modeled_mean = mean(ok_result$var1.pred, na.rm=T),
+                          modeled_min = min(ok_result$var1.pred, na.rm=T),
+                          modeled_max = max(ok_result$var1.pred, na.rm=T),
+                          mean_error = unname(unlist(cv_compare[1,1])),
+                          me_mean = unname(unlist(cv_compare[2,1])),
+                          msne = unname(unlist(cv_compare[5,1])),
+                          rmse = unname(unlist(cv_compare[8,1])),
+                          cor_obs_pred = unname(unlist(cv_compare[6,1])),
+                          cor_pred_res = unname(unlist(cv_compare[7,1])),
+                          data_norm_test_p = data_norm_test$p.value,
+                          cv_res_norm_test_p = cv_res_norm_test$p.value)
+      cv_diagnostics <- bind_rows(cv_diagnostics, temp2)
+      
+      rm(cv_compare, temp2)
+    }
     rm(df2, monitors, vgm, vgm_fit, model, 
-       ok_result, cv_result, cv_compare,
-       temp, temp2)
+       ok_result, cv_result, temp)
   }
+  #' Write out results
+  for_wande <- "C:/Users/semarten/OneDrive for Business/Research/For Wande/"
+  write_csv(krige_data, paste0(for_wande, aqs_krige_name))
+  write_csv(cv_data, paste0(for_wande, aqs_cv_name))
+  write_csv(cv_diagnostics, paste0(for_wande, aqs_diagnostics_name))
   
-  write_csv(krige_data, here::here("Data", aqs_krige_name))
-  write_csv(cv_data, here::here("Data", aqs_cv_name))
-  write_csv(cv_diagnostics, here::here("Data", aqs_diagnostics_name))
+  # write_csv(krige_data, here::here("Data", aqs_krige_name))
+  # write_csv(cv_data, here::here("Data", aqs_cv_name))
+  # write_csv(cv_diagnostics, here::here("Data", aqs_diagnostics_name))
 }
+  
+
 
