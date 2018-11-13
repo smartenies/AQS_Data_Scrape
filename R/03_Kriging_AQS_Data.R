@@ -81,7 +81,7 @@ krige_files <- krige_files$krige_files
 # krige_files <- krige_files$krige_files
 
 
-for (i in 1:length(krige_files)) {
+for (i in 7:length(krige_files)) {
   
   #' Output file names
   aqs_krige_name <- paste0(str_replace(krige_files[i], ".csv", ""), 
@@ -104,8 +104,12 @@ for (i in 1:length(krige_files)) {
            Site.Num = str_pad(Site.Num, 4, pad = "0")) %>% 
     mutate(monitor_id = paste0(County.Code, Site.Num)) %>% 
     
-    #' using the mean with flagged data excluded
-    mutate(mean = Mean.Excluding.All.Flagged.Data) %>% 
+    #' using the mean with flagged data excluded for 9h ozone
+    #' Arithmetic mean for all other measures
+    rowwise() %>% 
+    mutate(mean = ifelse(str_detect(krige_files[i], "8hour_44201"), 
+                         Mean.Excluding.All.Flagged.Data, 
+                         Arithmetic.Mean)) %>% 
     
     #' convert ppm to ppb
     mutate(mean = ifelse(Units.of.Measure == "Parts per million", 
@@ -166,7 +170,7 @@ for (i in 1:length(krige_files)) {
     monitors <- left_join(monitor_pts, daily2, by="monitor_id") %>% 
       as("Spatial")
     
-    monitors <- sp.na.omit(monitors)
+    monitors <- monitors[!is.na(monitors@data$mean),]
     monitors@data$mean <- ifelse(is.infinite(monitors@data$mean), NA,
                                  monitors@data$mean)
     summary(monitors@data$mean)
@@ -188,7 +192,7 @@ for (i in 1:length(krige_files)) {
       monitors@data$mean <- log(monitors@data$mean)
       monitors@data$mean <- ifelse(is.infinite(monitors@data$mean), NA,
                                    monitors@data$mean)
-      monitors <- sp.na.omit(monitors)
+      monitors <- monitors[!is.na(monitors@data$mean),]
       hist(monitors@data$mean)
       qqnorm(monitors@data$mean);qqline(monitors@data$mean, col=2)
     }
@@ -199,26 +203,40 @@ for (i in 1:length(krige_files)) {
     # plot(vgm)
     
     #' Second, fit the model
-    vgm_fit <- fit.variogram(vgm, model=vgm(all_models),
-                             fit.kappa = seq(.3,5,.01))
+    fit_error <- tryCatch(
+      fit.variogram(vgm, model=vgm(all_models),
+                    fit.kappa = seq(.3,5,.01)),
+      error = function(e) e
+    )
     
-    model <- as.character(vgm_fit$model)[nrow(vgm_fit)]
-    # plot(vgm, vgm_fit)
+    if(!inherits(fit_error, "error") & fit_error$range[length(fit_error$range)] > 0) {
     
-    #' Third, krige
-    ok_result <- krige(mean ~ 1, monitors, krige_pts_sp, vgm_fit)
-    
-    if(data_norm_test$p.value < 0.05) {
-      ok_result$var1.pred <- exp(ok_result$var1.pred + (0.5*ok_result$var1.var))
-      ok_result$var1.var <- NA
+        vgm_fit <- fit.variogram(vgm, model=vgm(all_models),
+                               fit.kappa = seq(.3,5,.01))
+      
+      
+      model <- as.character(vgm_fit$model)[nrow(vgm_fit)]
+      # plot(vgm, vgm_fit)
+      
+      #' Third, krige
+      ok_result <- krige(mean ~ 1, monitors, krige_pts_sp, vgm_fit)
+      
+      #' Format kriged data
+      #' if data weren't normal, back-transform to original units
+      #' need to apply a correction (See Oliver and Webster 2007, PAGE 185)
+      #' https://books.google.com/books?hl=en&lr=&id=WBwSyvIvNY8C&oi=fnd&pg=PR5&ots=CCLmSNqK1c&sig=lFZanxv2eVSKec6nPdESzuIFrA4#v=onepage&q&f=false
+      #' A back-transformed variance estimate for OK cannot be calculated because
+      #' the mean is not known (page 185)
+      if(data_norm_test$p.value < 0.05) {
+        ok_result$var1.pred <- exp(ok_result$var1.pred + (0.5*ok_result$var1.var))
+        ok_result$var1.var <- NA
+      }
+    } else {
+      ok_result <- data.frame(var1.pred = rep(NA, nrow(krige_pts_sp)),
+                              var1.var = rep(NA, nrow(krige_pts_sp)))
     }
     
-    #' Format kriged data
-    #' if data weren't normal, back-transform to original units
-    #' need to apply a correction (See Oliver and Webster 2007, PAGE 185)
-    #' https://books.google.com/books?hl=en&lr=&id=WBwSyvIvNY8C&oi=fnd&pg=PR5&ots=CCLmSNqK1c&sig=lFZanxv2eVSKec6nPdESzuIFrA4#v=onepage&q&f=false
-    #' A back-transformed variance estimate for OK cannot be calculated because
-    #' the mean is not known (page 185)
+    #' Summary data frame
     temp <- data.frame(WRFGRID_ID = krige_pts_sp@data$WRFGRID_ID,
                        pollutant = str_replace(krige_files[i], ".csv", ""),
                        date = dates[j],
@@ -230,53 +248,55 @@ for (i in 1:length(krige_files)) {
     krige_data <- bind_rows(krige_data, temp)
     
     #' Fourth, leave-one out cross validation
-    cv_result <- krige.cv(mean ~ 1, monitors, vgm_fit)
-    summary(cv_result)
-    
-    if(sum(is.na(cv_result$var1.pred)) == 0) {
-      hist(cv_result$residual)
-      qqnorm(cv_result$residual);qqline(cv_result$residual, col=2)
-      cv_res_norm_test <- shapiro.test(cv_result$residual)
-      cv_res_norm_test
+    if(!inherits(fit_error, "error") & fit_error$range[length(fit_error$range)] > 0) {
+      cv_result <- krige.cv(mean ~ 1, monitors, vgm_fit)
+      summary(cv_result)
       
-      #' Data frames of cross-validation and diagnostic results
-      
-      #' See Li and Heap for a nice explanation of diagnostics
-      #' https://pdfs.semanticscholar.org/686c/29a81eab59d7f6b7e2c4b060b1184323a122.pdf
-      #' Mean error (same units as pollutants), measures bias should be small
-      #' RMSE = root mean squared error (same units as pollutant), should be small
-      #' cor_obs_pred = correlation between observed and predicted, should be 1
-      #' cor_pred_res = correlation between predicted and residual, should be 0
-      cv_compare <- compare.cv(list(krige.cv_output = cv_result))
-      cv_result <- as.data.frame(cv_result) %>% 
-        mutate(pollutant = str_replace(krige_files[i], ".csv", ""),
-               date = dates[j])
-      cv_data <- bind_rows(cv_data, cv_result)
-      
-      temp2 <- data.frame(pollutant = str_replace(krige_files[i], ".csv", ""),
-                          date = dates[j],
-                          log_transformed = data_norm_test$p.value < 0.05,
-                          monitor_n = nrow(monitors),
-                          monitor_mean = mean(monitors$mean, na.rm=T),
-                          monitor_min = min(monitors$mean, na.rm=T),
-                          monitor_max = max(monitors$mean, na.rm=T),
-                          model = model,
-                          modeled_mean = mean(ok_result$var1.pred, na.rm=T),
-                          modeled_min = min(ok_result$var1.pred, na.rm=T),
-                          modeled_max = max(ok_result$var1.pred, na.rm=T),
-                          mean_error = unname(unlist(cv_compare[1,1])),
-                          me_mean = unname(unlist(cv_compare[2,1])),
-                          msne = unname(unlist(cv_compare[5,1])),
-                          rmse = unname(unlist(cv_compare[8,1])),
-                          cor_obs_pred = unname(unlist(cv_compare[6,1])),
-                          cor_pred_res = unname(unlist(cv_compare[7,1])),
-                          data_norm_test_p = data_norm_test$p.value,
-                          cv_res_norm_test_p = cv_res_norm_test$p.value)
-      cv_diagnostics <- bind_rows(cv_diagnostics, temp2)
-      
-      rm(cv_compare, temp2)
+      if(sum(is.na(cv_result$var1.pred)) == 0) {
+        hist(cv_result$residual)
+        qqnorm(cv_result$residual);qqline(cv_result$residual, col=2)
+        cv_res_norm_test <- shapiro.test(cv_result$residual)
+        cv_res_norm_test
+        
+        #' Data frames of cross-validation and diagnostic results
+        
+        #' See Li and Heap for a nice explanation of diagnostics
+        #' https://pdfs.semanticscholar.org/686c/29a81eab59d7f6b7e2c4b060b1184323a122.pdf
+        #' Mean error (same units as pollutants), measures bias should be small
+        #' RMSE = root mean squared error (same units as pollutant), should be small
+        #' cor_obs_pred = correlation between observed and predicted, should be 1
+        #' cor_pred_res = correlation between predicted and residual, should be 0
+        cv_compare <- compare.cv(list(krige.cv_output = cv_result))
+        cv_result <- as.data.frame(cv_result) %>% 
+          mutate(pollutant = str_replace(krige_files[i], ".csv", ""),
+                 date = dates[j])
+        cv_data <- bind_rows(cv_data, cv_result)
+        
+        temp2 <- data.frame(pollutant = str_replace(krige_files[i], ".csv", ""),
+                            date = dates[j],
+                            log_transformed = data_norm_test$p.value < 0.05,
+                            monitor_n = nrow(monitors),
+                            monitor_mean = mean(monitors$mean, na.rm=T),
+                            monitor_min = min(monitors$mean, na.rm=T),
+                            monitor_max = max(monitors$mean, na.rm=T),
+                            model = model,
+                            modeled_mean = mean(ok_result$var1.pred, na.rm=T),
+                            modeled_min = min(ok_result$var1.pred, na.rm=T),
+                            modeled_max = max(ok_result$var1.pred, na.rm=T),
+                            mean_error = unname(unlist(cv_compare[1,1])),
+                            me_mean = unname(unlist(cv_compare[2,1])),
+                            msne = unname(unlist(cv_compare[5,1])),
+                            rmse = unname(unlist(cv_compare[8,1])),
+                            cor_obs_pred = unname(unlist(cv_compare[6,1])),
+                            cor_pred_res = unname(unlist(cv_compare[7,1])),
+                            data_norm_test_p = data_norm_test$p.value,
+                            cv_res_norm_test_p = cv_res_norm_test$p.value)
+        cv_diagnostics <- bind_rows(cv_diagnostics, temp2)
+        
+        rm(cv_compare, temp2)
+      }
     }
-    rm(df2, monitors, vgm, vgm_fit, model, 
+    rm(daily2, monitors, vgm, vgm_fit, model, 
        ok_result, cv_result, temp)
   }
   #' Write out results
