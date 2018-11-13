@@ -167,6 +167,8 @@ for (i in 1:length(krige_files)) {
       as("Spatial")
     
     monitors <- sp.na.omit(monitors)
+    monitors@data$mean <- ifelse(is.infinite(monitors@data$mean), NA,
+                                 monitors@data$mean)
     summary(monitors@data$mean)
     
     hist(monitors@data$mean)
@@ -183,21 +185,25 @@ for (i in 1:length(krige_files)) {
     #' use log-transformation-- this can sometimes help, but not always
     #' can change this criterion if needed
     if(data_norm_test$p.value < 0.05) {
-      monitors$mean <- log(monitors$mean)
-      hist(monitors$mean)
-      qqnorm(monitors$mean);qqline(monitors$mean, col=2)
+      monitors@data$mean <- log(monitors@data$mean)
+      monitors@data$mean <- ifelse(is.infinite(monitors@data$mean), NA,
+                                   monitors@data$mean)
+      monitors <- sp.na.omit(monitors)
+      hist(monitors@data$mean)
+      qqnorm(monitors@data$mean);qqline(monitors@data$mean, col=2)
     }
     
     #' Kriging using gstat
     #' First, fit the empirical variogram
     vgm <- variogram(mean ~ 1, monitors, cutoff = c_dist)
-    plot(vgm)
+    # plot(vgm)
     
     #' Second, fit the model
     vgm_fit <- fit.variogram(vgm, model=vgm(all_models),
                              fit.kappa = seq(.3,5,.01))
+    
     model <- as.character(vgm_fit$model)[nrow(vgm_fit)]
-    plot(vgm, vgm_fit)
+    # plot(vgm, vgm_fit)
     
     #' Third, krige
     ok_result <- krige(mean ~ 1, monitors, krige_pts_sp, vgm_fit)
