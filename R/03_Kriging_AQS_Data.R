@@ -81,7 +81,7 @@ krige_files <- krige_files$krige_files
 # krige_files <- krige_files$krige_files
 
 
-for (i in 8:length(krige_files)) {
+for (i in 1:length(krige_files)) {
   
   #' Output file names
   aqs_krige_name <- paste0(str_replace(krige_files[i], ".csv", ""), 
@@ -177,9 +177,13 @@ for (i in 8:length(krige_files)) {
     
     hist(monitors@data$mean)
     qqnorm(monitors@data$mean);qqline(monitors@data$mean, col=2)
-    data_norm_test <- ifelse(nrow(monitors) > 3, shapiro.test(monitors@data$mean), NA)
-    data_norm_test
     
+    if (nrow(monitors) > 3 ) {
+      data_norm_test <- shapiro.test(monitors@data$mean)
+    } else {
+      data_norm_test <- NA
+    }
+      
     #' Some IDW estimates for comparison
     idw_pwr2 <- idw(mean ~ 1, monitors, krige_pts_sp, idp = 2)
     idw_pwr2.5 <- idw(mean ~ 1, monitors, krige_pts_sp, idp = 2.5)
@@ -188,7 +192,7 @@ for (i in 8:length(krige_files)) {
     #' if data are not normally distributed (based on Shapiro Wilk test), 
     #' use log-transformation-- this can sometimes help, but not always
     #' can change this criterion if needed
-    if(!is.na(data_norm_test)) {
+    if(all(!is.na(data_norm_test))) {
       if(data_norm_test$p.value < 0.05) {
         monitors@data$mean <- log(monitors@data$mean)
         monitors@data$mean <- ifelse(is.infinite(monitors@data$mean), NA,
@@ -235,7 +239,7 @@ for (i in 8:length(krige_files)) {
       #' https://books.google.com/books?hl=en&lr=&id=WBwSyvIvNY8C&oi=fnd&pg=PR5&ots=CCLmSNqK1c&sig=lFZanxv2eVSKec6nPdESzuIFrA4#v=onepage&q&f=false
       #' A back-transformed variance estimate for OK cannot be calculated because
       #' the mean is not known (page 185)
-      if(!is.na(data_norm_test)) {
+      if(all(!is.na(data_norm_test))) {
         if(data_norm_test$p.value < 0.05) {
         ok_result$var1.pred <- exp(ok_result$var1.pred + (0.5*ok_result$var1.var))
         ok_result$var1.var <- NA
