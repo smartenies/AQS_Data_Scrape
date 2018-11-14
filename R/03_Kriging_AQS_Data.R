@@ -81,7 +81,7 @@ krige_files <- krige_files$krige_files
 # krige_files <- krige_files$krige_files
 
 
-for (i in 7:length(krige_files)) {
+for (i in 8:length(krige_files)) {
   
   #' Output file names
   aqs_krige_name <- paste0(str_replace(krige_files[i], ".csv", ""), 
@@ -177,7 +177,7 @@ for (i in 7:length(krige_files)) {
     
     hist(monitors@data$mean)
     qqnorm(monitors@data$mean);qqline(monitors@data$mean, col=2)
-    data_norm_test <- shapiro.test(monitors@data$mean)
+    data_norm_test <- ifelse(nrow(monitors) > 3, shapiro.test(monitors@data$mean), NA)
     data_norm_test
     
     #' Some IDW estimates for comparison
@@ -188,13 +188,15 @@ for (i in 7:length(krige_files)) {
     #' if data are not normally distributed (based on Shapiro Wilk test), 
     #' use log-transformation-- this can sometimes help, but not always
     #' can change this criterion if needed
-    if(data_norm_test$p.value < 0.05) {
-      monitors@data$mean <- log(monitors@data$mean)
-      monitors@data$mean <- ifelse(is.infinite(monitors@data$mean), NA,
-                                   monitors@data$mean)
-      monitors <- monitors[!is.na(monitors@data$mean),]
-      hist(monitors@data$mean)
-      qqnorm(monitors@data$mean);qqline(monitors@data$mean, col=2)
+    if(!is.na(data_norm_test)) {
+      if(data_norm_test$p.value < 0.05) {
+        monitors@data$mean <- log(monitors@data$mean)
+        monitors@data$mean <- ifelse(is.infinite(monitors@data$mean), NA,
+                                     monitors@data$mean)
+        monitors <- monitors[!is.na(monitors@data$mean),]
+        hist(monitors@data$mean)
+        qqnorm(monitors@data$mean);qqline(monitors@data$mean, col=2)
+      }
     }
     
     #' Kriging using gstat
@@ -203,15 +205,21 @@ for (i in 7:length(krige_files)) {
     # plot(vgm)
     
     #' Second, fit the model
+    
+    #' ERROR HANDLING
     fit_error <- tryCatch(
       fit.variogram(vgm, model=vgm(all_models),
                     fit.kappa = seq(.3,5,.01)),
       error = function(e) e
     )
     
-    if(!inherits(fit_error, "error") & fit_error$range[length(fit_error$range)] > 0) {
+    range_check <- "range" %in% colnames(fit_error)
+    range_val_check <- ifelse(range_check == F, F, fit_error$range[length(fit_error$range)] > 0)
+    error_check <- !inherits(fit_error, "error")
     
-        vgm_fit <- fit.variogram(vgm, model=vgm(all_models),
+    if(range_check == T & range_val_check & error_check == T) {
+    
+      vgm_fit <- fit.variogram(vgm, model=vgm(all_models),
                                fit.kappa = seq(.3,5,.01))
       
       
@@ -227,13 +235,15 @@ for (i in 7:length(krige_files)) {
       #' https://books.google.com/books?hl=en&lr=&id=WBwSyvIvNY8C&oi=fnd&pg=PR5&ots=CCLmSNqK1c&sig=lFZanxv2eVSKec6nPdESzuIFrA4#v=onepage&q&f=false
       #' A back-transformed variance estimate for OK cannot be calculated because
       #' the mean is not known (page 185)
-      if(data_norm_test$p.value < 0.05) {
+      if(!is.na(data_norm_test)) {
+        if(data_norm_test$p.value < 0.05) {
         ok_result$var1.pred <- exp(ok_result$var1.pred + (0.5*ok_result$var1.var))
         ok_result$var1.var <- NA
-      }
-    } else {
+        }
+      } else {
       ok_result <- data.frame(var1.pred = rep(NA, nrow(krige_pts_sp)),
                               var1.var = rep(NA, nrow(krige_pts_sp)))
+      }
     }
     
     #' Summary data frame
@@ -248,7 +258,7 @@ for (i in 7:length(krige_files)) {
     krige_data <- bind_rows(krige_data, temp)
     
     #' Fourth, leave-one out cross validation
-    if(!inherits(fit_error, "error") & fit_error$range[length(fit_error$range)] > 0) {
+    if(range_check == T & range_val_check & error_check == T) {
       cv_result <- krige.cv(mean ~ 1, monitors, vgm_fit)
       summary(cv_result)
       
