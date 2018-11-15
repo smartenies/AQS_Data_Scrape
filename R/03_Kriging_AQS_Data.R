@@ -342,7 +342,11 @@ for (i in 11:length(krige_files)) {
                           model = ifelse(exists("model"),model, NA),
                           modeled_mean = NA,
                           modeled_min = NA,
-                          modeled_max = NA)
+                          modeled_max = NA,
+                          model = model,
+                          modeled_mean = mean(ok_result$var1.pred, na.rm=T),
+                          modeled_min = min(ok_result$var1.pred, na.rm=T),
+                          modeled_max = max(ok_result$var1.pred, na.rm=T))
       cv_diagnostics <- bind_rows(cv_diagnostics, temp2)
       rm(temp2)
     }
