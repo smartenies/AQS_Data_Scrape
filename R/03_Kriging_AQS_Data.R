@@ -81,7 +81,8 @@ krige_files <- krige_files$krige_files
 # krige_files <- krige_files$krige_files
 
 
-for (i in 1:length(krige_files)) {
+# for (i in 1:length(krige_files)) {
+for (i in 11:length(krige_files)) {
   
   #' Output file names
   aqs_krige_name <- paste0(str_replace(krige_files[i], ".csv", ""), 
@@ -178,7 +179,7 @@ for (i in 1:length(krige_files)) {
     hist(monitors@data$mean)
     qqnorm(monitors@data$mean);qqline(monitors@data$mean, col=2)
     
-    if (nrow(monitors) > 3 ) {
+    if (nrow(monitors) > 3) {
       data_norm_test <- shapiro.test(monitors@data$mean)
     } else {
       data_norm_test <- NA
@@ -218,13 +219,25 @@ for (i in 1:length(krige_files)) {
     )
     
     range_check <- "range" %in% colnames(fit_error)
+    fit_method <- 7
+    
+    if(range_check == F) {
+      fit_error <- tryCatch(
+        fit.variogram(vgm, model=vgm(all_models),
+                      fit.kappa = seq(.3,5,.01), fit.method = 6),
+        error = function(e) e
+      )
+      fit_method <- 6
+    } 
+    
+    range_check <- "range" %in% colnames(fit_error)
     range_val_check <- ifelse(range_check == F, F, fit_error$range[length(fit_error$range)] > 0)
     error_check <- !inherits(fit_error, "error")
     
-    if(range_check == T & range_val_check & error_check == T) {
+    if(range_check == T & range_val_check == T & error_check == T) {
     
       vgm_fit <- fit.variogram(vgm, model=vgm(all_models),
-                               fit.kappa = seq(.3,5,.01))
+                               fit.kappa = seq(.3,5,.01), fit.method = fit_method)
       
       
       model <- as.character(vgm_fit$model)[nrow(vgm_fit)]
@@ -241,13 +254,14 @@ for (i in 1:length(krige_files)) {
       #' the mean is not known (page 185)
       if(all(!is.na(data_norm_test))) {
         if(data_norm_test$p.value < 0.05) {
-        ok_result$var1.pred <- exp(ok_result$var1.pred + (0.5*ok_result$var1.var))
-        ok_result$var1.var <- NA
+         ok_result$var1.pred <- exp(ok_result$var1.pred + (0.5*ok_result$var1.var))
+         ok_result$var1.var <- NA
         }
-      } else {
+      }
+    } else {
       ok_result <- data.frame(var1.pred = rep(NA, nrow(krige_pts_sp)),
                               var1.var = rep(NA, nrow(krige_pts_sp)))
-      }
+      model <- NA
     }
     
     #' Summary data frame
@@ -262,15 +276,19 @@ for (i in 1:length(krige_files)) {
     krige_data <- bind_rows(krige_data, temp)
     
     #' Fourth, leave-one out cross validation
-    if(range_check == T & range_val_check & error_check == T) {
+    if(range_check == T & range_val_check == T & error_check == T) {
       cv_result <- krige.cv(mean ~ 1, monitors, vgm_fit)
       summary(cv_result)
       
       if(sum(is.na(cv_result$var1.pred)) == 0) {
         hist(cv_result$residual)
         qqnorm(cv_result$residual);qqline(cv_result$residual, col=2)
-        cv_res_norm_test <- shapiro.test(cv_result$residual)
-        cv_res_norm_test
+        
+        if(nrow(monitors) >= 3) {
+          cv_res_norm_test <- shapiro.test(cv_result$residual)
+        } else {
+          cv_res_norm_test <- NA
+        }
         
         #' Data frames of cross-validation and diagnostic results
         
@@ -288,12 +306,13 @@ for (i in 1:length(krige_files)) {
         
         temp2 <- data.frame(pollutant = str_replace(krige_files[i], ".csv", ""),
                             date = dates[j],
-                            log_transformed = data_norm_test$p.value < 0.05,
+                            log_transformed = ifelse(is.na(data_norm_test), F, 
+                                                     data_norm_test$p.value < 0.05),
                             monitor_n = nrow(monitors),
                             monitor_mean = mean(monitors$mean, na.rm=T),
                             monitor_min = min(monitors$mean, na.rm=T),
                             monitor_max = max(monitors$mean, na.rm=T),
-                            model = model,
+                            model = ifelse(exists("model"),model, NA),
                             modeled_mean = mean(ok_result$var1.pred, na.rm=T),
                             modeled_min = min(ok_result$var1.pred, na.rm=T),
                             modeled_max = max(ok_result$var1.pred, na.rm=T),
@@ -303,13 +322,31 @@ for (i in 1:length(krige_files)) {
                             rmse = unname(unlist(cv_compare[8,1])),
                             cor_obs_pred = unname(unlist(cv_compare[6,1])),
                             cor_pred_res = unname(unlist(cv_compare[7,1])),
-                            data_norm_test_p = data_norm_test$p.value,
-                            cv_res_norm_test_p = cv_res_norm_test$p.value)
+                            data_norm_test_p = ifelse(is.na(cv_res_norm_test), NA, 
+                                                      cv_res_norm_test$p.value),
+                            cv_res_norm_test_p = ifelse(is.na(cv_res_norm_test), NA, 
+                                                        cv_res_norm_test$p.value))
         cv_diagnostics <- bind_rows(cv_diagnostics, temp2)
         
         rm(cv_compare, temp2)
       }
+    } else {
+      temp2 <- data.frame(pollutant = str_replace(krige_files[i], ".csv", ""),
+                          date = dates[j],
+                          log_transformed = ifelse(is.na(data_norm_test), F, 
+                                                   data_norm_test$p.value < 0.05),
+                          monitor_n = nrow(monitors),
+                          monitor_mean = mean(monitors$mean, na.rm=T),
+                          monitor_min = min(monitors$mean, na.rm=T),
+                          monitor_max = max(monitors$mean, na.rm=T),
+                          model = ifelse(exists("model"),model, NA),
+                          modeled_mean = NA,
+                          modeled_min = NA,
+                          modeled_max = NA)
+      cv_diagnostics <- bind_rows(cv_diagnostics, temp2)
+      rm(temp2)
     }
+        
     rm(daily2, monitors, vgm, vgm_fit, model, 
        ok_result, cv_result, temp)
   }
