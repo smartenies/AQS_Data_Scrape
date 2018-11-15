@@ -328,7 +328,7 @@ for (i in 11:length(krige_files)) {
                                                         cv_res_norm_test$p.value))
         cv_diagnostics <- bind_rows(cv_diagnostics, temp2)
         
-        rm(cv_compare, temp2)
+        rm(vgm, vgm_fit, cv_result, cv_compare, temp2)
       }
     } else {
       temp2 <- data.frame(pollutant = str_replace(krige_files[i], ".csv", ""),
@@ -347,8 +347,7 @@ for (i in 11:length(krige_files)) {
       rm(temp2)
     }
         
-    rm(daily2, monitors, vgm, vgm_fit, model, 
-       ok_result, cv_result, temp)
+    rm(daily2, monitors, model, ok_result, temp)
   }
   #' Write out results
   for_wande <- "C:/Users/semarten/OneDrive for Business/Research/For Wande/"
