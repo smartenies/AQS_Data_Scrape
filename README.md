@@ -20,7 +20,7 @@ https://drive.google.com/open?id=1-omBeF4YsEzJOFT12N9fvQXp2UqfnUIR
 
 - Once we have the R: drive up and running (very soon!) I'll be updating this code
 
-- One major limiation is that the grid extends father east than where we have monitors.
+- One major limitation is that the grid extends father east than where we have monitors.
 This will generate errors in the predictions
 
 - An alternative approach may be to average these concentrations over weeks or 
