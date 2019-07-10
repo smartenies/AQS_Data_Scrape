@@ -24,15 +24,15 @@ if(!dir.exists("./Data/Temp")) dir.create("./Data/Temp")
 if(!dir.exists("./Data/AQS_Data")) dir.create("./Data/AQS_Data")
 if(!dir.exists("./Data/Met_Data")) dir.create("./Data/Met_Data")
 
-years <- c(2010:2014)
+years <- c(2015:2017)
 met_vars <- c("WIND", "PRESS", "TEMP", "RH_DP")
 
 for (i in 1:length(years)) {
   
   #' Daily PM2.5
-  aqs_url <- paste0("https://aqs.epa.gov/aqsweb/airdata/daily_88101_", 
+  aqs_url <- paste0("https://aqs.epa.gov/aqsweb/airdata/daily_88101_",
                     years[i], ".zip")
-  
+
   download.file(aqs_url, destfile = here::here("Data/Temp", "temp.zip"))
   unzip(here::here("Data/Temp", "temp.zip"), exdir = here::here("Data/AQS_Data"))
   
@@ -61,120 +61,56 @@ for (i in 1:length(years)) {
   unzip(here::here("Data/Temp", "temp.zip"), exdir = here::here("Data/AQS_Data"))
 }
 
-#' 
-#' #' ----------------------------------------------------------------------------
-#' #' This script is based on a previous script for scraping AQS data
-#' #' AUTHOR: Chad W. Milando (Univ of Michigan; cmilando@umich.edu)
-#' #' DATE: 5/18/2016
-#' #' PURPOSE: scraper of AQS
-#' #' ----------------------------------------------------------------------------
-#' 
-#' library(Hmisc)
-#' library(stringr)
-#' library(readr)
-#' library(dplyr)
-#' library(sf)
-#' 
-#' #' User info for AQS website:
-#' user_name <- "sheena.martenies@colostate.edu"
-#' pw <- "khakifrog54"
-#' 
-#' #' For which years and which state do we want data?
-#' years <- c(2010:2010)
-#' state <- "08" #Colorado
-#' time_zone <- "America/Denver"
-#' 
-#' #' File name for output data
-#' aqs_file_name <- paste0("AQS_Data_", state, "_", 
-#'                         years[1], "_to_", years[length(years)], ".csv")
-#' mon_file_name <- paste0("AQS_Monitors_", state, "_", 
-#'                         years[1], "_to_", years[length(years)], ".csv")
-#' 
-#' #' Denver Metro counties: Adams (001), Arapahoe (005), Boulder (013), Broomfield
-#' #' (014), Denver (031), Douglas (035), Jefferson (059), Larimer (069), Weld (123) 
-#' all_counties <-c("001", "003", "005", "007", "009", "011", "013", "014", "015",
-#'                  "017", "019", "021", "023", "025", "027", "029", "031", "033",
-#'                  "035", "037", "039", "041", "043", "045", "047", "049", "051",
-#'                  "053", "055", "057", "059", "061", "063", "065", "067", "069",
-#'                  "071", "072", "073", "075", "077", "079", "081", "083", "085",
-#'                  "087", "089", "091", "093", "095", "097", "099", "103", "105",
-#'                  "107", "109", "111", "113", "115", "117", "119", "121", "123",
-#'                  "125") 
-#' 
-#' #all_counties <- str_pad(as.character(1:125), width = 3, pad = "0")
-#' 
-#' #' Choose which pollutants to scrape
-#' #' https://aqs.epa.gov/aqsweb/codes/data/ParametersByDesc.csv
-#' #' Criteria pollutants and carbon parameters
-#' 
-#' # params <- c("14129", "42101", "42401", "42602", "44201", "88101", 
-#' #             "16111", "88317", "88321")
-#' params <- c("88101", "44201") #' ozone and PM2.5
-#' output <- data.frame()
-#' 
-#' #' May have to confirm that the aqs_link (below) works
-#' for(county in all_counties) {
-#'   print(paste("County:", county))
-#'   for(param in params) {
-#'     for(year in years) {
-#'       #for(month in c(1:12)) {
-#'       
-#'       bdate <- paste0(year,sprintf("%02i",1),"01")
-#'       edate <- paste0(year,sprintf("%02i",12),31)
-#'       
-#'       prefix <- paste0("https://aqs.epa.gov/api/rawData?user=",
-#'                        user_name, "&pw=", pw, "&format=DMCSV&param=")
-#'       aqs_link <- paste0(prefix,param,
-#'                          "&bdate=",bdate,"&edate=",edate,"&state=",state,
-#'                          "&county=",county,collapse = "")
-#'       error_catch <- F; warn_catch <- F
-#'       tryCatch(read.csv(aqs_link),error = function(e) error_catch <- T, 
-#'                warning = function(w) warn_catch <- T)
-#'       if(!error_catch) {
-#'         aqs_data <- read.csv(aqs_link)[-1,]
-#'         if(length(which(aqs_data$Latitude == "END OF FILE")) > 0) {
-#'           aqs_data <- aqs_data[-which(aqs_data$Latitude == "END OF FILE"),]
-#'         }
-#'         
-#'         if(nrow(aqs_data) > 0) {
-#'           if(nrow(output) > 0) {
-#'             output <- bind_rows(output,aqs_data)
-#'           }
-#'           else {
-#'             output <- aqs_data
-#'           }
-#'           rm(aqs_data)
-#'         }
-#'       }
-#'       
-#'       cat("param = ",param,year,"; error?",error_catch,
-#'           "; warn?", warn_catch,"\n")
-#'       #   }
-#'     }
-#'   }
-#' }
-#' 
-#' output <- output %>% 
-#'   mutate(datetime = as.POSIXct(paste(Date.Local, X24.Hour.Local), 
-#'                                format="%Y-%m-%d %H",tz = time_zone),
-#'          Latitude = as.numeric(as.character(Latitude)),
-#'          County.Code = str_pad(County.Code, 3, pad = "0"),
-#'          Site.Num = str_pad(Site.Num, 4, pad = "0")) %>% 
-#'   mutate(monitor_id = paste0(County.Code, Site.Num))
-#' glimpse(output)
-#' 
-#' write_csv(output, here::here("Data", aqs_file_name))
-#' 
-#' #' Create an sf object for the monitor locations
-#' 
-#' ll_wgs84 <- "+proj=longlat +datum=WGS84 +no_defs +ellps=WGS84 +towgs84=0,0,0"
-#' 
-#' monitors <- select(output, County.Code, Site.Num, Parameter.Code,
-#'                    monitor_id, Longitude, Latitude) %>% 
-#'   distinct() %>% 
-#'   st_as_sf(coords = c("Longitude", "Latitude"), crs = ll_wgs84)
-#' 
-#' plot(st_geometry(monitors))
-#' 
-#' st_write(monitors, dsn = here::here("Data", mon_file_name),
-#'          layer_options = "GEOMETRY=AS_WKT", delete_dsn = T)
+#' -----------------------------------------------------------------------------
+#' Read in the MET datasets and simplify 
+#' -----------------------------------------------------------------------------
+
+library(tidyverse)
+library(readxl)
+library(sf)
+
+#' Coordinate reference systems 
+ll_wgs84 <- "+proj=longlat +datum=WGS84 +no_defs +ellps=WGS84 +towgs84=0,0,0"
+albers <- "+proj=aea +lat_1=29.5 +lat_2=45.5 +lat_0=23 +lon_0=-96 +x_0=0 +y_0=0 +ellps=GRS80 +towgs84=0,0,0,0,0,0,0 +units=m +no_defs"
+
+met_vars <- c("PRESS", "RH_DP", "TEMP", "WIND")
+
+for (met in 1:length(met_vars)) {
+  print(paste(met, "of", length(met_vars), "variables"))
+  
+  file_list <- list.files(here::here("Data/Met_Data"), pattern = met_vars[met])
+  
+  met_data <- data.frame()
+  
+  for (i in 1:length(file_list)) {
+    temp <- read_csv(here::here("Data/Met_Data", file_list[i]))
+    colnames(temp) <- gsub(" ", "_", colnames(temp))
+    
+    temp <- filter(temp, State_Code == "08") %>% 
+      mutate(County_Code = str_pad(County_Code, width = 3, side = "left", pad = "0"),
+             Site_Num = str_pad(Site_Num, width = 4, side = "left", pad = "0")) %>% 
+      mutate(monitor_id = paste0(State_Code, County_Code, Site_Num)) %>% 
+      rename(Max_Value = "1st_Max_Value")
+    
+    met_data <- bind_rows(met_data, temp)
+    rm(temp)
+  }
+  
+  #' make the met data spatial
+  # met_data <- filter(met_data, !is.na(monitor_id)) %>% 
+  #   st_as_sf(coords = c("Longitude", "Latitude"), crs = ll_wgs84) %>% 
+  #   st_transform(crs = albers)
+  # 
+  # met_name <- paste0("Monitor_", met_vars[met], "_Data_AEA.csv")
+  # st_write(met_data, here::here("Data", met_name),
+  #          layer_options = "GEOMETRY=AS_WKT", delete_dsn = T)
+  
+  #' Just get Greeley data for Emily
+  met_data <- filter(met_data, County_Code == "123")
+  
+  if(nrow(met_data) > 0) {
+    met_name <- paste0("Greeley_", met_vars[met], "_Data_2015_to_2017.csv")
+    write_csv(met_data, here::here("Data", met_name)) 
+  }
+}
+

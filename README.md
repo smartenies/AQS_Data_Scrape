@@ -3,13 +3,14 @@ Scraping and kriging monitoring data from the US EPA's Air Quality System
 
 ### For Wande (11/15/18)
 
-- I've generated estimates for ozone at the grid points using both inverse-distance
+- I've generated estimates for ozone and PM2.5 at the grid points using both inverse-distance
 weighting and ordinary kriging. Sometimes the model has a difficult time fitting
 a semivarigram to the data, and kriged estimates aren't available.
-    - All estiamtes for ozone are in ppb
+    - All estiamtes for ozone (44201) are in ppb
+    - All estimates for PM2.5 (88101) are in ug/m3
 
 - You'll have to take a look at the distribution of each daily estimate in order
-to see if you want to use the kriged data. IDW estiamtes may be better given some of
+to see if you want to use the kriged data. IDW estimates may be better given some of
 the limitations (time resolution, spatial coverage of monitors)
 
 - Due to storage issues on my U:/ drive, the output files are currently here:
@@ -19,7 +20,7 @@ https://drive.google.com/open?id=1-omBeF4YsEzJOFT12N9fvQXp2UqfnUIR
 
 - Once we have the R: drive up and running (very soon!) I'll be updating this code
 
-- One major limiation is that the grid extends father east than where we have monitors.
+- One major limitation is that the grid extends father east than where we have monitors.
 This will generate errors in the predictions
 
 - An alternative approach may be to average these concentrations over weeks or 
